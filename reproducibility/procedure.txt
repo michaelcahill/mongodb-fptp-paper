@@ -1,0 +1,102 @@
+steps:
+=== PRIOR TO GIT REPO, NEED TERRAFORM SCRIPT ===
+i. stage amazon instance
+	1. create and instance on console
+		a. instance settings -
+			Type: amzn2-ami-kernel-5.10-hvm-2.0.20230307.0-x86_64-gp2
+			size: t2.xlarge
+			storage: 50GB
+	2. download pem file
+	3. chmod 400 pem file
+	4. Adjust your ssh config to do a send-alive message every 120s:
+		a. Open an editor for the ssh config
+			sudo nano ~/.ssh/config
+		b. If it is not already in the file, add a line for rules that apply to every host:
+			Host *
+		c. Add a line under the host settings to set the send-alive message interval
+				SendAliveInterval 120
+	5. log into instance
+ii.	setup pre-repo
+	1. install git
+		sudo yum install git -y
+iii. clone git repo
+	1. git clone https://github.sydney.edu.au/USYD-DBRG/mongodb-fptp-dawei.git
+=== CAN BE SCRIPTED FROM GIT REPO ===
+A. install requirements
+	1. install python 3.7 [NOT-NEEDED]
+		sudo yum install python3.7 -y
+	2. install pip
+		sudo yum install python-pip -y
+	3. cd mongodb-fptp-dawei
+	4. sudo pip3 install -r requirement.txt
+B. setup mongodb versions
+	1. enter mongo versions folder
+		cd mongoversions
+	2. get original mongodb-4.4.0
+		wget https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-amazon2-4.4.0.tgz
+	3. get WITH_COLLSCAN alteration [NOT-NEEDED]
+		wget https://github.com/DaweiTao/mongo/archive/with-collscan.tar.gz
+	4. get WITH_COLLSCAN_WITH_FIX alteration [NOT-NEEDED]
+		wget https://github.com/DaweiTao/mongo/archive/with-collscan-with-fix.tar.gz
+	5. extract versions
+		tar -xvf mongodb-linux-x86_64-amazon2-4.4.0.tgz
+		tar -xvf with-collscan.tar.gz
+		tar -xvf with-collscan-with-fix.tar.gz
+	6. Set up Environment for building versions:
+		i. install latest gcc with following script - if it halts, you might need to hit enter (it takes quite a long time)
+			#!/bin/sh
+			GCC_VERSION=8.2.0
+			sudo yum -y update
+			sudo yum -y install bzip2 wget gcc gcc-c++ gmp-devel mpfr-devel libmpc-devel make
+			gcc --version
+			cd ~/
+			wget https://ftp.gnu.org/gnu/gcc/gcc-$GCC_VERSION/gcc-$GCC_VERSION.tar.gz
+			tar zxf gcc-$GCC_VERSION.tar.gz
+			mkdir gcc-build
+			cd gcc-build
+			../gcc-$GCC_VERSION/configure --enable-languages=c,c++ --disable-multilib
+			make
+			sudo make install
+			gcc --version
+			cd ..
+			rm -rf gcc-build
+		i. install lzma devel
+			sudo yum install -y xz-devel
+		ii. install libcurl
+			sudo yum install -y curl-devel
+			sudo yum install -y openssl-devel
+		iii. install python devel
+			sudo yum install -y python3-devel
+		iv. install build requirements from either of the downloaded versions
+			sudo python3 -m pip install -r ~/mongodb-fptp-dawei/mongoversions/mongo-with-collscan/etc/pip/compile-requirements.txt
+	7. Build mongodb versions
+		i. Build collscan version
+			cd ~/mongodb-fptp-dawei/mongoversions/mongo-with-collscan
+			sudo python3 buildscripts/scons.py -j4 --disable-warnings-as-errors -Q MONGO_VERSION=4.4.0-collscan install-mongod
+		ii. Build collscan-with-fix version
+			cd ~/mongodb-fptp-dawei/mongoversions/mongo-with-collscan-with-fix
+			sudo python3 buildscripts/scons.py -j4 --disable-warnings-as-errors -Q MONGO_VERSION=4.4.0-collscan-with-fix install-mongod 
+	8. Start mongodb
+		i. Create data and log directories
+			mkdir -p ~/mongodb-fptp-dawei/mongoversions/mongodb-linux-x86_64-amazon2-4.4.0/lib/mongo
+			mkdir -p ~/mongodb-fptp-dawei/mongoversions/mongodb-linux-x86_64-amazon2-4.4.0/log/mongodb
+		ii. Create syslinks to binaries
+			sudo ln -s ~/mongodb-fptp-dawei/mongoversions/mongodb-linux-x86_64-amazon2-4.4.0/bin/* /usr/bin/
+		iii. Grant/verify ownership to current user
+			sudo chown ec2-user ~/mongodb-fptp-dawei/mongoversions/mongodb-linux-x86_64-amazon2-4.4.0/lib/mongo
+			sudo chown ec2-user ~/mongodb-fptp-dawei/mongoversions/mongodb-linux-x86_64-amazon2-4.4.0/log/mongodb
+		iv. Start mongodb
+			mongod --dbpath ~/mongodb-fptp-dawei/mongoversions/mongodb-linux-x86_64-amazon2-4.4.0/lib/mongo --logpath ~/mongodb-fptp-dawei/mongoversions/mongodb-linux-x86_64-amazon2-4.4.0/log/mongodb/mongod.log --fork
+C. Run experiment
+	1. go to experiment folder
+		cd ~/mongodb-fptp-dawei/experiment
+	2. Build database
+		python3 experiment_core.py uniform -b uniform
+	3. Run experiment
+		python3 experiment_core.py uniform -q 2 
+		python3 experiment_core.py uniform -r
+	4. Go to visualisations folder
+		cd ~/mongodb-fptp-dawei/processing
+	4. Generate Visualisations
+		python3 analyze_result.py uniform cover
+		

@@ -1,22 +1,12 @@
 # Reproducibility
 
-<!-- vscode-markdown-toc -->
-* 1. [SIGMOD definition](#SIGMODdefinition)
-	* 1.1. [Initial Observations](#InitialObservations)
-* 2. [PVLDB definition](#PVLDBdefinition)
-	* 2.1. [PVLDB sample reproducibility submissions](#PVLDBsamplereproducibilitysubmissions)
-
-<!-- vscode-markdown-toc-config
-	numbering=true
-	autoSave=true
-	/vscode-markdown-toc-config -->
-<!-- /vscode-markdown-toc -->
+[[TOC]]
 
 The goal of this document is to identify the criteria used in VLDB and SIGMOD which pertains to a submission of a paper to the reproducibility track.
 
-##  1. <a name='SIGMODdefinition'></a>SIGMOD definition
+## SIGMOD definition
 
-###  1.1. <a name='InitialObservations'></a>Initial Observations
+### Initial Observations
 
 Initial observations indicate that SIDMOD has some clearly defined reproducibility guidelines outlined in [SIGMOD Guidelines](https://reproducibility.sigmod.org/#Guidelines)
 In essence they are as follows:
@@ -54,7 +44,7 @@ In essence they are as follows:
         5.	Recompiles the sources of the paper
         6.	Generate a PDF for the paper that contains all the new graphs
 
-##  2. <a name='PVLDBdefinition'></a>PVLDB definition
+## PVLDB definition
 
 Much less well defined than SIGMOD - [PLVDB Repoducibility guidelines](http://vldb.org/pvldb/reproducibility/#submissions)
 
@@ -100,7 +90,7 @@ They also provide some context on the process the reviewers will use and so give
     4.	Process – the review is carried out by particular DB groups, maybe tailor your scripts style to one that is familiar to those groups.
 
 
-###  2.1. <a name='PVLDBsamplereproducibilitysubmissions'></a>PVLDB sample reproducibility submissions
+### PVLDB sample reproducibility submissions
 
 1. Leveraging Similarity joins for Signal Reconstruction.
 2. An Eight-Dimensional Systematic Evaluation of Optimized Search Algorithms on Modern Processors
