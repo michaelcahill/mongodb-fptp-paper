@@ -1,0 +1,209 @@
+\section{Why does MongoDB's \approachName Optimizer Avoid Collection Scans?}
+\label{sec:rootcauseanalysis}
+% Nevertheless, we observed that the change we made still not sufficient to always generate optimal query plans. The reasoning behind the preference bias is unknown. 
+As we just saw in Section \ref{sec:evaluation}, MongoDB's \approachName optimizer doesn't choose collection scan plans, even for queries when it would run substantially faster than using an index. In this section, we take a closer look at the optimizer code to identify the reasons for this preference bias issue in MongoDB.
+
+Inspection of the query optimizer code revealed a surprising design choice: by default, \relname does not include a collection scan among the list of candidate plans to be run in \approachName, if an index is available to satisfy a query.  In more detail,  \texttt{src/\-mongo/\-db/\-query/\-query\_planner.cpp} \footnote{\href{https://github.com/mongodb/mongo/blob/r7.0.1/src/mongo/db/query/query_planner.cpp\#L1607}{https://github.com/mongodb/mongo/blob/r7.0.1/src/mongo/db/query/ query\_planner.cpp\#L1607}} contains this check before a collection scan is considered:
+
+\begin{verbatim}
+   if (possibleToCollscan &&
+      (collscanRequested || collScanRequired ...
+\end{verbatim}
+
+The variable \texttt{possible\-To\-Collscan} indicates whether a collection scan is possible (database administrators can disable collection scans or the query can include a hint that requires the use of an index); \texttt{collscanRequested} indicates that an explicit query hint has specified that a collection scan should be used; and \texttt{coll\-Scan\-Required} is true only if there is no matching index.  In other words, if a matching index exists, a collection scan must be explicitly requested for MongoDB to consider it.  If the collection scan is not participating, it cannot win the race.
+
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=0.9\columnwidth]{images/results-without-covering-index/v\mdbver-with-coll/comprehensive_mongo_choice.png}
+%    \includegraphics[width=0.9\columnwidth]{images/results-without-covering-index/v\mdbver-with-coll/72169da5f0334b6c8f1c9de4ed9b7248_mongo_choice.png}
+    \caption{Chosen plans by MongoDB+COLLSCAN.}
+    \label{fig:mongo-v1-bothindexed-choices}
+\end{figure}
+
+\subsection{Forcing consideration of the collection scan}
+However, is this all there is to the issue? We modified the source code to produce a variant we call MongoDB+COLLSCAN that simply always adds a COLLSCAN plan to the set of candidate plans which MongoDB's \approachName optimizer tries out. We repeated our experiments with this variant DBMS and found that it sometimes chooses collection scans as seen in Figure~\ref{fig:mongo-v1-bothindexed-choices}. This is in contrast to  unmodified \relname, which never chooses a collection scan, as shown in Figure~\ref{fig:bothindexed-evaluation}~(a). When we forced COLLSCAN to be considered in the \approachName race, it often does not win, even for queries where the collection scan plan truly runs substantially faster than an alternative plan with index scan.
+
+\begin{figure*}[tb]
+%\newlength\plotheight%
+\setlength\plotheight{\heightof{\includegraphics[width=0.3\textwidth]{images/results-without-covering-index/v\mdbver-with-coll-with-fix/comprehensive_practical_winner.png}}}
+    \centering
+    \subfigure[Plans chosen by MongoDB\_MOD.]{\includegraphics[height=\plotheight]{images/results-without-covering-index/v\mdbver-with-coll-with-fix/comprehensive_mongo_choice.png}\label{fig:mongo-v2-choices}} 
+    \hfill
+%    \begin{subfigure}%[b]{0.3\textwidth}
+%         \centering
+%          \includegraphics[width=0.3\textwidth]{images/results-without-covering-index/v\mdbver-with-coll-with-fix/comprehensive_mongo_choice.png}
+%         \caption{Plans chosen by MongoDB\_MOD.}
+%         \label{fig:mongo-choice-v2}
+%    \end{subfigure}%
+    \subfigure[Optimal Plan Choices.]{\includegraphics[height=\plotheight]{images/results-without-covering-index/v\mdbver-with-coll-with-fix/comprehensive_practical_winner.png}\label{fig:mongo-v2-optimal}} 
+    \hfill
+%    \begin{subfigure}%[b]%{0.3\textwidth}
+%         \centering
+%         \includegraphics[width=0.3\textwidth]{images/results-without-covering-index/v\mdbver-with-coll-with-fix/comprehensive_practical_winner.png}
+%         \caption{Optimal Plan Choices.}
+%         \label{fig:v\mdbver-with-coll-v2}
+%    \end{subfigure}%
+    \subfigure[Performance Impact of MongoDB\_MOD's choices.]%: Accuracy = 85.12\%, Performance diff = 1.02\%.]
+    {\includegraphics[height=\plotheight-1em]{images/results-without-covering-index/v\mdbver-with-coll-with-fix/comprehensive_summary_accuracy.png}\label{fig:mongo-v2-perfimpact}}
+%    \begin{subfigure}%[b]%{0.3\textwidth}
+%         \centering
+%         \includegraphics[width=0.28\textwidth]{images/results-without-covering-index/v\mdbver-with-coll-with-fix/comprehensive_summary_accuracy=85.12_overall_percentage_change=2.09.png}
+%        \caption{Performance Impact: Accuracy = 85\%, Performance diff = 2.09\%.}
+%         \label{fig:v\mdbver-with-fix-v2}
+%    \end{subfigure}%
+     \vspace*{-0.5\baselineskip}
+     \caption{Effectiveness of modified \approachName query optimizer of MongoDB\_MOD (dual index scenario).}
+     \label{fig:mongo-v2-evaluation}
+\end{figure*}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%     impact on the single index case    %
+% [UR: I think we concentrate on dual-index and covering index in this part] %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%\begin{figure*}[t]
+%\newlength\plotheight%
+%\setlength\plotheight{\heightof{\includegraphics[width=0.3\textwidth]{images/results-without-covering-index/v\mdbver-with-coll-with-fix/comprehensive_practical_winner.png}}}
+%    \centering
+%    \subfigure[Plans chosen by MongoDB\_MOD.]{\includegraphics[height=\plotheight]{images/results-single-index/v\mdbver-with-col-with-fix/comprehensive_mongo_choice.png}\label{fig:mongo-v2-choices-single}} 
+%    \hfill
+%    \begin{subfigure}%[b]{0.3\textwidth}
+%         \centering
+%          \includegraphics[width=0.3\textwidth]{images/results-without-covering-index/v\mdbver-with-coll-with-fix/comprehensive_mongo_choice.png}
+%         \caption{Plans chosen by MongoDB\_MOD.}
+%         \label{fig:mongo-choice-v2}
+%    \end{subfigure}%
+%    \subfigure[Optimal Plan Choices.]{\includegraphics[height=\plotheight]{images/mongo-mod-effect/single-index/comprehensive_practical_winner.png}\label{fig:mongo-v2-optimal-single}} 
+%    \hfill
+%    \begin{subfigure}%[b]%{0.3\textwidth}
+%         \centering
+%         \includegraphics[width=0.3\textwidth]{images/results-without-covering-index/v\mdbver-with-coll-with-fix/comprehensive_practical_winner.png}
+%         \caption{Optimal Plan Choices.}
+%         \label{fig:v\mdbver-with-coll-v2}
+%    \end{subfigure}%
+%    \subfigure[Performance Impact of MongoDB\_MOD's choices.]%: Accuracy = 85.12\%, Performance diff = 1.02\%.]
+%    {\includegraphics[height=\plotheight]{images/mongo-mod-effect/single-index/comprehensive_summary_accuracy=84.68_impact_factor=1.03932.png}\label{fig:mongo-v2-perfimpact-single}}
+%    \begin{subfigure}%[b]%{0.3\textwidth}
+%         \centering
+%         \includegraphics[width=0.28\textwidth]{images/results-without-covering-index/v\mdbver-with-coll-with-fix/comprehensive_summary_accuracy=85.12_overall_percentage_change=2.09.png}
+%        \caption{Performance Impact: Accuracy = 85\%, Performance diff = 2.09\%.}
+%         \label{fig:v\mdbver-with-fix-v2}
+%    \end{subfigure}%
+%     \vspace*{-0.5\baselineskip}
+%     \caption{Effectiveness modified \approachName query optimizer of MongoDB\_MOD (single index scenario).}
+%     \label{fig:mongo-v2-evaluation-single}
+%\end{figure*}
+
+\vspace*{-0.5\baselineskip}
+\subsection{Overrated Index Scan}
+
+\begin{comment} Michael: agreed, this is a change in more recent results from what Dawei saw in earlier version of MongoDB. I've changed to a region where there is a clear difference
+\af{This is confusing to me; selectivity (0.95.0.95) seems to be well in the region where COLLSCAN is chosen. }
+\end{comment}
+
+To further explore the cause of the preference bias that overrates index scans compared to collection scans, we look in detail at the query execution log showing the activity of MongoDB+COLLSCAN during the optimization race for a query with selectivity 0.3 in each attribute. Comparing Figures~\ref{fig:mongo-v1-bothindexed-choices} and \ref{fig:mongo-bothindexed-optimal}, we see that for this query, the optimizer chooses to use an index even when it considers the truly superior collection scan. As mentioned in Section~\ref{sec:background}, the \approachName approach assigns a score to summarize the performance of each query plan at the end of the race (and then the query plan with the highest score will be chosen). The formula considers the $productivity$ of each query plan, where productivity is based on the ratio of result documents produced to work units performed during the race. Note that these work units represent logical costs, not actual measured runtimes.
+
+As it turns out, when determining the work unit of an index scan, the MongoDB implementation of the \approachName approach ignores the cost of fetching index documents; the optimizer in \relname treats the index retrieving work and the document retrieving work together as a single unit of work (i.e., the same amount of work required by a collection scan looking at the same number of documents). Therefore, the work unit is undercounted for the index scan, and so the productivity of an index scan is overrated. This implementation detail in MongoDB's query optimizer code hides the true advantage of a collection scan in many cases.  We suggest that it would be appropriate for MongoDB to adjust the way work unit is measured in the race, to correct this.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%     impact on the covering index case    % 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{figure*}[tb]
+%\newlength\plotheight%
+\setlength\plotheight{\heightof{\includegraphics[width=0.3\textwidth]{images/results-without-covering-index/v\mdbver-with-coll-with-fix/comprehensive_practical_winner.png}}}
+    \centering
+    \subfigure[Plans chosen by MongoDB\_MOD.]%. \textbf{Covering Index}]
+    {\includegraphics[height=\plotheight]{images/results-with-covering-index/v\mdbver-with-coll-with-fix/comprehensive_mongo_choice.png}\label{fig:mongo-v2-coveringindex-choices}} 
+    \hfill
+%    \subfigure[Optimal Plan Choices.]{\includegraphics[height=\plotheight]{images/results-with-covering-index/v\mdbver/comprehensive_practical_winner.png}\label{fig:mongo-v2-coveringindex-optimal}} 
+    \subfigure[Optimal Plan Choices.]{\includegraphics[height=\plotheight]{images/results-with-covering-index/v\mdbver-with-coll-with-fix/comprehensive_practical_winner.png}\label{fig:mongo-v2-coveringindex-optimal}} 
+    \hfill
+    \subfigure[Performance Impact of MongoDB\_MOD's choices.]%: Accuracy = 85.12\%, Performance diff = 1.02\%.]
+    {\includegraphics[height=\plotheight-1em]{images/results-with-covering-index/v\mdbver-with-coll-with-fix/comprehensive_summary_accuracy.png}\label{fig:mongo-v2-coveringindex-perfimpact}}
+     \vspace*{-0.5\baselineskip}
+     \caption{Effectiveness of modified \approachName query optimizer of MongoDB\_MOD (covering index scenario).}
+     \label{fig:mongo-v2-evaluation-coveringindex}
+\end{figure*}
+
+\subsection{Adjusting productivity score of index scan}
+We showed above that the optimizer ascribes too much productivity to the index scan, because it treats as as work unit the combination of retrieving the index entry and retrieving the document the index points to. So we made another small modification to the optimizer code. When the plan contains a FETCH (that is, when there is a lookup through the index) we simply halved the productivity score calculated. This is overly simplistic for complex query plans, but its a reasonable shortcut for the simple queries in these experiments. We call the variant system with forced consideration of COLLSCAN, and also with the adjusted productivity score as described, MongoDB\_MOD.  This system is evaluated for the physical design with uniform data distribution and two indexes, in Figures~\ref{fig:mongo-v2-choices}--\ref{fig:mongo-v2-perfimpact}. We see that while the modified score is not a perfect adjustment, it makes the right decision in many of the queries, and the chosen plan is never much worse than the best possible. We remark that, in theory, the optimal plan choice should be exactly the same for this system as for unmodified \relname since the only change is in the optimizer rather than in query plan execution (that is, Fig~\ref{fig:mongo-v2-optimal} should be the same as Fig~\ref{fig:mongo-bothindexed-optimal}. This is not exactly the case because each figure is produced from measurements of the running time of the plans, and there is some experimental variation from run to run; however, the differences are only occasional cells near the region boundary, where two plans have almost the same cost, so which is fastest (by a tiny amount) can vary between runs.
+
+% Michael exp3-2, Accuracy: 90.88% Impact factor: 1.0145401778590586
+
+The overall accuracy of the query optimizer of this modified version of MongoDB is now 91\% (up from just 34\% measured in Section~\ref{sec:evaluation_bothindexed}), and the average performance impact of the remaining suboptimal plan choices is 1.5\%. 
+
+% Michael exp3, comprehensive_summary_accuracy\=52.48_impact_factor\=1.21331.png
+The suggested adjustment of the index scan score also helps somewhat in the scenario with a physical design that includes covering indexes, as shown in Figure~\ref{fig:mongo-v2-evaluation-coveringindex}. If we compare the plan choices of the modified \approachName optimizer in Figure~\ref{fig:mongo-v2-coveringindex-choices} with the ones done by the original \relname optimizer in Figure~\ref{fig:mongo-coveringindex-choices}, we not only see collection scans sometimes being chosen, but also note the much broader use of the covering index, which resembles much closer the optimal case (the few variations near the region boundaries between the optimal cases between Figures~\ref{fig:mongo-v2-coveringindex-optimal} and \ref{fig:mongo-coveringindex-optimal} are due to slight variations in the runtimes between experiments). % SURE? [ur]
+Consequently, the remaining suboptimal plan choices of \approachName have a much reduced performance impact (cf. Figure~\ref{fig:mongo-v2-coveringindex-perfimpact}).
+Despite these qualitative improvements, the overall accuracy of the modified query optimizer has not changed significantly, at 52.5\%, with an average performance impact of 21\%. 
+
+
+\subsection{Discussion}
+We have shown that the coding in MongoDB's \approachName query optimization has a systematic preference bias that can lead to poor choice of execution plan. The outcomes can be improved by forcing consideration of COLLSCAN in the race, and adjusting the productivity score to recognize the extra work done 
+%in an index scan 
+when both index lookup and then document lookup happen. More work is needed to find more sophisticated ways to score productivity that will deal with complicated plans with index lookup on some but not all steps. 
+%(and so we need an adjustment that is more nuanced than simply halving the score).
+
+We know that the scale of our workload is considerably smaller than that common in real-world settings; we only measured cases where all indexes fit in memory. In reality, companies often have Terabytes of data stored in MongoDB, and they have more substantial index structures. This would significantly magnify the true costs of the index scan and thus dramatically increase the negative impact of the preference bias from neglecting the cost of fetching index entries. Therefore, in such cases, we expect that preference bias will become a much more serious issue. 
+
+\begin{comment} Michael: looks good to me
+\af{Check my rewording of this}
+\end{comment}
+
+We had started this research on MongoDB 4.0.12 and in that version we found another mistake in the code that ran the race. The count of records retrieved for the collection scan was initialized at -1 rather than 0. This led to the collection scan always retrieving one fewer record when the race ended. Due to our work, this bug was fixed in MongoDB 4.4.0 and the fix is included in \mdbver, which we measure in this paper.
+
+%\subsection{Query Performance Impact}
+%In this section, we first illustrate the experiment results of identifying the optimal query plans through a visualization.
+%We quantify the impact of the performance bias issue and  present the results through a heatmap. Through experiments we determine the accuracy of the query optimizer is only 69.29\%. Besides that, the optimal query plan is up to 86.83\% faster than MongoDB's choice. We demonstrate that the overall performance of the MongoDB query optimizer can be improved by 10.96\% if MongoDB adopt the optimal query plans. We then examine various database designs by repeating  the experiment on different dataset with various kinds of distribution to further explore the impact of this issue.We find that the distribution of the dataset does not influence MongoDB's query plan decisions. 
+
+%\subsubsection{Visualize Optimal Query Plans}
+%\begin{table}[h]
+%\begin{tabular}{lllll}
+%\toprule
+%Case Number & Distribution of A & Distribution of B & Index on A & Index on B \\ 
+%\midrule
+%1           & Uniform           & Uniform           & True       & True    \\   \bottomrule
+%\end{tabular}
+%\caption{The database design of case 1}
+%\label{tbl:c1}
+%\end{table}
+
+%Figure \ref{fig:linearv2} plots query plans chosen by MongoDB V2, while figure \ref{fig:linearreal} shows all optimal candidates MongoDB expected to  choose. Table \ref{tbl:c1} describes the physical design of this experiment. Field A and field B both have uniform distribution and we create an index on each field. The experiment result is surprisingly, we should see that the current implementation of \approachName make inappropriate choices in around one-third of  the cases. Through comparison, we found that the rate of a sub-optimal query plan been picked is 30.21\%.
+%Note that the top right corner of figure \ref{fig:linearreal} is painted with yellow, it verify the theoretically analysis we made in section  \ref{sec:v1fail}. That is, for the query with high selectivty on both range predicates, the performance of a collection scan overtakes that of an index scan. Because index scans have overhead of retrieving index documents. 
+
+%\begin{figure}[h]
+%    \centering
+%    \includegraphics[width=\linewidth]{images/body/uniform_dist_practical_3095_10-23-2019_11_33_35.png}
+%    \caption{A visualization of MongoDB V2 query plans}
+%    \label{fig:linearv2}
+%\end{figure}
+%
+%\begin{figure}[h]
+%    \centering
+%    \includegraphics[width=\linewidth]{images/body/uniform_dist_a%ctual_3095_10-23-2019_11_33_35.png}
+%    \caption{A visualization of the optimal query plans}
+%    \label{fig:linearreal}
+%\end{figure}
+
+
+%However, having high rate picking the sub-optimal 
+%query plan does not necessary mean there will be 
+%a huge performance drop. In other words, MongoDB 
+%might still capable to provide a considerable 
+%level of efficient query execution. Therefore, we
+%are going to quantify the change in performance to 
+%take a closer look at the impact of this issue. 
+
+
+%\begin{figure}[h]
+%    \centering
+%    \includegraphics[width=0.9\linewidth]{images/body/uniform_dist_error_3095_11-09-2019_15_07_17.png}
+%    \caption{A visualization of the impact of the preference bias issue}
+%    \label{fig:diff1}
+%\end{figure}
+
+%In figure \ref{fig:diff1} we visualize the impact factor using the technique we explained in section \ref{sec:quant}. Different values of impact facto are mapped to distinct colours in the colour bar. Recall that the higher the impact factor is, the worse the chosen plan preforms. For example, an impact factor of 2 means the execution time of a chosen plan is twice the execution time of the optimal plan. And the value of 1 means the performance of the query plan is identical to the ideal baseline (i.e. the ideal case in which the optimal candidate has been chosen). Therefore, we can tell the dark red area in figure \ref{fig:diff1} indicates that the preference bias issue has a negative impact. The experimental results are in line with our expectations, as the selectivity of  both fields rises, the relative performance of the collection scan increases; as a result, the pixel colour gradually becomes darker along both axis. According to our measurement, the rate of an optimizal query plan been chosen is only 69.29\%. In the worst case, the preformance of the optimal plan is 86.83\% faster than MongoDB's choice. The overall performance of the query optimizer can be improved by 10.79\% if the \approachName approach is capable of choosing the optimal query plan. 
+
+
+
+

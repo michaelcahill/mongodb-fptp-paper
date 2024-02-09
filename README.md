@@ -23,21 +23,42 @@ code data and outcomes in appropriate stores, and producing reports and charts o
 
 Instructions
 ---
-1. Provision an AWS instance: m6id.large (or larger) recommended
-Attach at least 200GB storage
-Use the Amazon Linux 2023 AMI
-Make sure you have ssh access (keypair and ssh is permitted inbound from your client)
-2. Log in and run:
-```sh
-$ wget -c 'https://github.com/michaelcahill/mongodb-fptp-paper/archive/refs/heads/main.zip'
-$ unzip main.zip && rm main.zip
+1. Provision an AWS instance:
+   - m6id.large (or larger) recommended
+   - Attach at least 200GB storage
+   - Use the Amazon Linux 2023 AMI
+   - Make sure you have ssh access (keypair and ssh is permitted inbound from your client)
 
-$ sudo bash ./mongodb-fptp-paper-main/prep.sh
-$ ./mongodb-fptp-paper-main/build-all.sh
-$ ./mongodb-fptp-paper-main/run-all.sh
-```
+2. Log in and run:
+   ```sh
+   $ wget -c 'https://github.com/michaelcahill/mongodb-fptp-paper/archive/refs/heads/main.zip'
+   $ unzip main.zip && rm main.zip
+
+   $ sudo bash ./mongodb-fptp-paper-main/prep.sh
+   $ ./mongodb-fptp-paper-main/build-all.sh
+   $ ./mongodb-fptp-paper-main/run-all.sh
+   ```
+
+   Note that `build-all.sh` can take up to 6 hours on the minimum supported instance, and `run-all.sh` 
+takes approximately 9 * 12.5 hours, or almost 5 days. The build will be faster on a larger instance,
+but the experiment runs will not. The experiment runs will not speed up on a larger instance, but
+can be parallelized across multiple instances by copying the binaries from the build step
+and running the `run.sh` script with parameters to cover the values in `run-all.sh`.
+
 3. Data and charts will be generated in the `results-cover`, `results-both` and `results-single`
 directories, corresponding to different index choices.
+
+4. The latex source for the paper is in [./vldb-submission-latex](./vldb-submission-latex/), and
+images from the results directories are copied as follows:
+   ```
+   results-single/v7.0.1/processed-result/uniform/*.png -> images/results-single-index/v7.0.1
+   results-cover/v7.0.1/processed-result/uniform/*.png -> images/results-with-covering-index/v7.0.1
+   results-cover/v7.0.1-with-coll/processed-result/uniform/*.png -> images/results-with-covering-index/v7.0.1-with-coll
+   results-cover/v7.0.1-with-coll-with-fix/processed-result/uniform/*.png -> images/results-with-covering-index/v7.0.1-with-coll-with-fix
+   results-both/v7.0.1/processed-result/uniform/*.png -> images/results-without-covering-index/v7.0.1
+   results-both/v7.0.1-with-coll/processed-result/uniform/*.png -> images/results-without-covering-index/v7.0.1-with-coll
+   results-both/v7.0.1-with-coll-with-fix/processed-result/uniform/*.png -> images/results-without-covering-index/v7.0.1-with-coll-with-fix
+   ```
 
 Running the code manually
 ----

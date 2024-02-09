@@ -1,0 +1,10 @@
+\begin{abstract}
+Query optimization is crucial for every database management system (DBMS) to enable fast execution of declarative queries.
+Most DBMS designs include cost-based query optimization. However, MongoDB implements a different approach to choose an execution plan that we call \emph{``first past the post'' (\approachName) query optimization}.  \approachName does not estimate costs for each execution plan, but rather partially executes the alternative plans in a round-robin race and observes the work done by each relative to the number of records returned. The optimizer computes a score for each potential plan based on the partial execution and then chooses the plan with the highest score to run to completion for the query.
+
+In this paper, we analyze the effectiveness of MongoDB's \approachName query optimizer. We see whether the optimizer will choose the truly best execution plan among all alternatives, and (if it does not) we find how much slower the chosen plan is, compared to the best plan for the query. We also show how to visualize the effectiveness, and
+ %One of our initial steps has been to create a generalized query model for evaluating the effectiveness of the query optimizer.
+in this way, we identify situations where the \relname query optimizer chooses suboptimal query plans. Through experiments, we conclude that \approachName has what we call a preference bias, choosing an index scan plan even in many cases where a collection scan would run faster. 
+We identify the reasons for the preference bias, which can lead MongoDB to choose a plan with more than twice the runtime compared to the best possible plan for the query. 
+
+\end{abstract}
