@@ -39,8 +39,8 @@ Instructions
    $ ./mongodb-fptp-paper-main/run-all.sh
    ```
 
-   Note that `build-all.sh` can take up to 6 hours on the minimum supported instance, and `run-all.sh` 
-takes approximately 9 * 12.5 hours, or almost 5 days. The build will be faster on a larger instance,
+   Note that `build-all.sh` takes 6-7 hours on the minimum supported instance, and `run-all.sh` 
+takes approximately 71 hours, or around 3 full days. The build will be faster on a larger instance,
 but the experiment runs will not. The experiment runs will not speed up on a larger instance, but
 can be parallelized across multiple instances by copying the binaries from the build step
 and running the `run.sh` script with parameters to cover the values in `run-all.sh`.
